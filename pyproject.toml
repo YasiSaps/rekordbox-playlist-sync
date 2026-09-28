@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rekordbox-playlist-sync"
+dynamic = ["version"]
+description = "Update rekordbox 6/7 playlists in place from M3U/M3U8 files - no delete & re-import, no full USB re-sync. Keeps cues, beatgrids and analysis. macOS & Windows."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Yasi Saps" }]
+requires-python = ">=3.9"
+dependencies = ["pyrekordbox>=0.4.4,<0.5"]
+keywords = [
+  "rekordbox", "rekordbox 6", "rekordbox 7", "m3u", "m3u8", "playlist", "playlist sync",
+  "usb export", "sync manager", "device library", "pioneer dj", "alphatheta", "cdj", "xdj",
+  "dj", "dj tools", "music library", "pyrekordbox",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Topic :: Multimedia :: Sound/Audio",
+  "Topic :: Multimedia :: Sound/Audio :: Players",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://yasisaps.github.io/rekordbox-playlist-sync/"
+Source = "https://github.com/YasiSaps/rekordbox-playlist-sync"
+Issues = "https://github.com/YasiSaps/rekordbox-playlist-sync/issues"
+Changelog = "https://github.com/YasiSaps/rekordbox-playlist-sync/blob/main/CHANGELOG.md"
+
+[project.scripts]
+rbsync = "rbsync.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "rbsync.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

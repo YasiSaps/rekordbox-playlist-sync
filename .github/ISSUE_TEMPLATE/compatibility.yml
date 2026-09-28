@@ -1,0 +1,36 @@
+name: Compatibility report
+description: Share `rbsync selftest` results for your rekordbox version / OS
+title: "Compatibility: rekordbox <version> on <macOS/Windows>"
+labels: [compatibility]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you! `rbsync selftest` only works on a temporary copy of your library.
+        File paths in the output contain your user name and track titles — edit them out if you like.
+  - type: input
+    id: rekordbox
+    attributes:
+      label: rekordbox version
+      placeholder: "7.2.19"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS (Apple Silicon), macOS (Intel), Windows 11, Windows 10]
+    validations:
+      required: true
+  - type: textarea
+    id: selftest
+    attributes:
+      label: Output of `rbsync selftest`
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: usb
+    attributes:
+      label: USB check (optional)
+      description: Did a Sync Manager / Export after `rbsync apply` transfer only the changed tracks? See docs/TESTING.md.

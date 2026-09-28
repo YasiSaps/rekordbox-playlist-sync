@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://yasisaps.github.io/rekordbox-playlist-sync/sitemap.xml

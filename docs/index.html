@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rbsync – Update rekordbox playlists from M3U without re-syncing your USB</title>
+<meta name="description" content="Free, open-source tool for rekordbox 6 and 7 on macOS and Windows. Update an existing rekordbox playlist from an M3U/M3U8 file – only changed tracks are added or removed, cues and beatgrids are kept, and Sync Manager only copies what changed to your CDJ/XDJ USB.">
+<meta name="keywords" content="rekordbox, rekordbox 7, rekordbox 6, rekordbox playlist, m3u, m3u8, import playlist, update playlist, rekordbox usb export, sync manager, device library, CDJ, XDJ, Pioneer DJ, AlphaTheta, DJ software, pyrekordbox">
+<meta name="author" content="Yasi Saps">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://yasisaps.github.io/rekordbox-playlist-sync/">
+<meta name="theme-color" content="#0f1115">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="rbsync">
+<meta property="og:title" content="rbsync – Update rekordbox playlists in place">
+<meta property="og:description" content="Update rekordbox 6/7 playlists from M3U/M3U8 – only changed tracks, cues kept, no full USB re-sync. macOS & Windows. Free and open source.">
+<meta property="og:url" content="https://yasisaps.github.io/rekordbox-playlist-sync/">
+<meta property="og:image" content="https://yasisaps.github.io/rekordbox-playlist-sync/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="rbsync – Update rekordbox playlists in place">
+<meta name="twitter:description" content="Only changed tracks. Cues kept. No full USB re-sync. macOS & Windows.">
+<meta name="twitter:image" content="https://yasisaps.github.io/rekordbox-playlist-sync/social-preview.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "rbsync (rekordbox playlist sync)",
+  "applicationCategory": "MultimediaApplication",
+  "operatingSystem": "macOS, Windows",
+  "description": "Update an existing rekordbox 6/7 playlist in place from an M3U/M3U8 file, adding and removing only changed tracks so USB exports only transfer what changed.",
+  "url": "https://yasisaps.github.io/rekordbox-playlist-sync/",
+  "downloadUrl": "https://github.com/YasiSaps/rekordbox-playlist-sync",
+  "softwareVersion": "0.1.0",
+  "license": "https://opensource.org/licenses/MIT",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Person", "name": "Yasi Saps", "url": "https://github.com/YasiSaps" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {"@type": "Question", "name": "Why does rekordbox re-copy my whole USB after I re-import an M3U playlist?",
+     "acceptedAnswer": {"@type": "Answer", "text": "Deleting a playlist and importing an M3U creates a new playlist, so Sync Manager removes the old one and pushes the new one. Paths spelled differently from your library also create new, unanalysed tracks. rbsync updates the existing playlist instead, so only changed tracks transfer."}},
+    {"@type": "Question", "name": "Can rekordbox update an existing playlist from an M3U file?",
+     "acceptedAnswer": {"@type": "Answer", "text": "Not by itself: File > Import > Import Playlist always adds a new playlist. rbsync adds and removes only the changed tracks in the existing playlist."}},
+    {"@type": "Question", "name": "Does rbsync keep hot cues and beatgrids?",
+     "acceptedAnswer": {"@type": "Answer", "text": "Yes. rbsync only changes which tracks are in the playlist; tracks, cues, beatgrids, analysis, My Tags and ratings are untouched."}}
+  ]
+}
+</script>
+<style>
+  :root { --bg:#ffffff; --fg:#14171c; --muted:#5b6472; --card:#f4f6f8; --line:#e3e7ec; --accent:#15924f; --add:#1f9d57; --rem:#d93b3f; --code:#0f1115; --codefg:#e8ebf0; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#0f1115; --fg:#eef1f5; --muted:#a3abb8; --card:#171a21; --line:#252a33; --accent:#2fbf71; --add:#2fbf71; --rem:#e5484d; --code:#0a0c10; --codefg:#e8ebf0; }
+  }
+  :root[data-theme="dark"] { --bg:#0f1115; --fg:#eef1f5; --muted:#a3abb8; --card:#171a21; --line:#252a33; --accent:#2fbf71; --add:#2fbf71; --rem:#e5484d; --code:#0a0c10; --codefg:#e8ebf0; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif; }
+  a { color:var(--accent); }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+  header { padding: 28px 0 8px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  .brand { font-weight:700; font-size:20px; color:var(--fg); text-decoration:none; }
+  nav a { margin-left:18px; color:var(--muted); text-decoration:none; font-size:15px; }
+  nav a:hover { color:var(--fg); }
+  .hero { padding: 56px 0 40px; }
+  .hero h1 { font-size: clamp(34px, 6vw, 56px); line-height:1.08; margin:0 0 18px; letter-spacing:-0.02em; }
+  .hero p.lead { font-size: clamp(18px, 2.4vw, 21px); color:var(--muted); max-width: 720px; margin:0 0 28px; }
+  .btns { display:flex; flex-wrap:wrap; gap:12px; }
+  .btn { display:inline-block; padding:12px 20px; border-radius:10px; font-weight:600; text-decoration:none; border:1px solid var(--line); color:var(--fg); }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .pills { margin-top:22px; display:flex; flex-wrap:wrap; gap:8px; }
+  .pill { font-size:13px; padding:4px 10px; border-radius:999px; background:var(--card); color:var(--muted); border:1px solid var(--line); }
+  section { padding: 36px 0; border-top:1px solid var(--line); }
+  h2 { font-size: 28px; margin: 0 0 16px; letter-spacing:-0.01em; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; }
+  .card h3 { margin:0 0 6px; font-size:18px; }
+  .card p { margin:0; color:var(--muted); font-size:15.5px; }
+  pre { background:var(--code); color:var(--codefg); padding:16px 18px; border-radius:12px; overflow-x:auto; font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin: 10px 0 18px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+  .add { color:var(--add); } .rem { color:var(--rem); }
+  .compare { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  @media (max-width: 720px) { .compare { grid-template-columns: 1fr; } nav { display:none; } }
+  .compare .card.bad h3 { color:var(--rem); } .compare .card.good h3 { color:var(--add); }
+  ol li, ul li { margin: 6px 0; }
+  table { width:100%; border-collapse: collapse; font-size:15px; }
+  th, td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--line); vertical-align: top; }
+  .tabs { display:flex; gap:8px; margin-bottom:6px; }
+  .tabs button { font:inherit; font-size:15px; padding:6px 14px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); cursor:pointer; }
+  .tabs button[aria-selected="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+  footer { padding: 32px 0 48px; color:var(--muted); font-size:14px; border-top:1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="./">rbsync</a>
+    <nav>
+      <a href="#why">Why</a><a href="#install">Install</a><a href="#use">Usage</a><a href="#safety">Safety</a><a href="#faq">FAQ</a>
+      <a href="https://github.com/YasiSaps/rekordbox-playlist-sync">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <h1>Update rekordbox playlists in place — without re-syncing your whole USB.</h1>
+    <p class="lead">rbsync updates an existing <strong>rekordbox 6 / 7</strong> playlist from an <strong>M3U or M3U8</strong> file. Only the changed tracks are added or removed, your cues and beatgrids stay put, and Sync Manager only copies what actually changed to your CDJ / XDJ USB.</p>
+    <div class="btns">
+      <a class="btn primary" href="#install">Install for free</a>
+      <a class="btn" href="https://github.com/YasiSaps/rekordbox-playlist-sync">View on GitHub</a>
+    </div>
+    <div class="pills">
+      <span class="pill">rekordbox 6 &amp; 7</span><span class="pill">macOS &amp; Windows</span><span class="pill">M3U / M3U8</span><span class="pill">Keeps cues &amp; beatgrids</span><span class="pill">Open source · MIT</span>
+    </div>
+  </div>
+
+  <section id="why">
+    <h2>The problem it fixes</h2>
+    <div class="compare">
+      <div class="card bad">
+        <h3>Delete &amp; re-import</h3>
+        <p>rekordbox can import an M3U, but never update an existing playlist from one. Deleting and re-importing creates a <em>new</em> playlist, so Sync Manager tears the old one down and copies everything again. Slightly different file paths even create duplicate tracks without your cues.</p>
+      </div>
+      <div class="card good">
+        <h3>rbsync</h3>
+        <p>Compares the file with the playlist that is already in rekordbox and applies only the difference. Same playlist, same tracks, same cues — tested on a 2,000-file USB: <strong>+3 / −2 change → 3 files copied, 0 re-copied</strong>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Features</h2>
+    <div class="grid">
+      <div class="card"><h3>Incremental</h3><p>Adds new tracks, removes dropped ones, leaves the rest alone. Optional reorder to match the file.</p></div>
+      <div class="card"><h3>Keeps your prep</h3><p>Hot cues, memory cues, beatgrids, analysis, My Tags, ratings and colours are never touched.</p></div>
+      <div class="card"><h3>Smart matching</h3><p>Finds your tracks despite accents (NFC/NFD), letter case, <code>file://</code> URLs, relative or Windows paths.</p></div>
+      <div class="card"><h3>Safe</h3><p>Dry run first, automatic backups, one-command undo, and it refuses to write while rekordbox is open.</p></div>
+      <div class="card"><h3>No duplicates</h3><p>Duplicate lines ignored; if a file is in your collection twice, the copy with the most cues is used.</p></div>
+      <div class="card"><h3>Drag &amp; drop</h3><p>Drop a playlist on the macOS app, or right-click → Send to on Windows. Or script it with <code>--json</code>.</p></div>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Install</h2>
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-os="mac">macOS</button>
+      <button role="tab" aria-selected="false" data-os="win">Windows</button>
+    </div>
+    <div data-panel="mac">
+      <p>Open <strong>Terminal</strong> and paste:</p>
+      <pre>curl -fsSL https://raw.githubusercontent.com/YasiSaps/rekordbox-playlist-sync/main/install/install.sh | bash</pre>
+      <p>Adds the <code>rbsync</code> command and the <strong>rbsync Playlist Updater</strong> drag-and-drop app in <code>~/Applications</code>.</p>
+    </div>
+    <div data-panel="win" hidden>
+      <p>Install <a href="https://www.python.org/downloads/windows/">Python 3.9+</a> (tick “Add python.exe to PATH”), then open <strong>PowerShell</strong> and paste:</p>
+      <pre>irm https://raw.githubusercontent.com/YasiSaps/rekordbox-playlist-sync/main/install/install.ps1 | iex</pre>
+      <p>Adds the <code>rbsync</code> command and a right-click <strong>Send to → rbsync - Update rekordbox playlist</strong> entry.</p>
+    </div>
+    <p>Check everything with <code>rbsync doctor</code>, and try it risk-free with <code>rbsync selftest</code> (runs on a temporary copy of your library).</p>
+  </section>
+
+  <section id="use">
+    <h2>Usage</h2>
+    <ol>
+      <li>Name the file after the rekordbox playlist: <code>Peak Time.m3u8</code> updates <strong>Peak Time</strong>.</li>
+      <li>Preview (safe while rekordbox is open):<pre>rbsync plan "Peak Time.m3u8"
+
+  <span class="add">+ add        10</span>
+  <span class="rem">- remove     3</span>   (removed from this playlist only)
+  = unchanged  22</pre></li>
+      <li>Quit rekordbox, then apply:<pre>rbsync apply "Peak Time.m3u8"</pre></li>
+      <li>Open rekordbox and sync your USB — only the 10 new tracks are copied.</li>
+    </ol>
+    <p>Undo any time with <code>rbsync restore latest</code>. Full command reference in the <a href="https://github.com/YasiSaps/rekordbox-playlist-sync#commands">README</a>.</p>
+  </section>
+
+  <section id="safety">
+    <h2>Safety</h2>
+    <ul>
+      <li><strong>Never touches music files</strong> and never adds or deletes tracks in your collection — only playlist membership.</li>
+      <li><strong>Backup before every write</strong>, stored in <code>Documents/rbsync/backups</code>; <code>rbsync restore</code> puts it back.</li>
+      <li><strong>Refuses to write while rekordbox is running</strong>, and verifies the playlist after writing.</li>
+      <li><strong>Version gate:</strong> writing is enabled on rekordbox versions verified end-to-end; others need an explicit flag.</li>
+    </ul>
+  </section>
+
+  <section id="faq">
+    <h2>FAQ</h2>
+    <table>
+      <tr><th>Which rekordbox versions?</th><td>Verified on rekordbox 7.2 (macOS). rekordbox 6 and other 7.x versions work in preview mode and can be enabled after running <code>rbsync selftest</code>. rekordbox 5 is not supported.</td></tr>
+      <tr><th>Is it official?</th><td>No. It is an independent open-source project built on <a href="https://github.com/dylanljones/pyrekordbox">pyrekordbox</a>, not affiliated with AlphaTheta / Pioneer DJ.</td></tr>
+      <tr><th>New tracks?</th><td>rbsync only uses tracks already in your collection so they are properly analysed. Unknown files are listed — drag them into rekordbox once and run again.</td></tr>
+      <tr><th>Where do M3U files come from?</th><td>Any app or script: rekordbox, Serato, Traktor, VirtualDJ or iTunes exports, VLC, foobar2000, playlist generators or AI assistants.</td></tr>
+    </table>
+  </section>
+
+  <footer>
+    rbsync is free software under the MIT license · <a href="https://github.com/YasiSaps/rekordbox-playlist-sync">Source on GitHub</a> · <a href="https://github.com/YasiSaps/rekordbox-playlist-sync/issues">Report an issue</a><br>
+    rekordbox is a trademark of AlphaTheta Corporation. This project is not affiliated with or endorsed by AlphaTheta Corporation or Pioneer DJ.
+  </footer>
+</div>
+<script>
+  (function () {
+    var isWin = /Windows/i.test(navigator.userAgent);
+    function show(os) {
+      document.querySelectorAll('[data-os]').forEach(function (b) { b.setAttribute('aria-selected', String(b.dataset.os === os)); });
+      document.querySelectorAll('[data-panel]').forEach(function (p) { p.hidden = p.dataset.panel !== os; });
+    }
+    document.querySelectorAll('[data-os]').forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.os); }); });
+    show(isWin ? 'win' : 'mac');
+  })();
+</script>
+</body>
+</html>

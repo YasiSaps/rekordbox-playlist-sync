@@ -1,0 +1,35 @@
+name: Bug report
+description: Something went wrong or looks wrong in rekordbox after using rbsync
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If your library looks wrong: quit rekordbox and run `rbsync restore latest` first.
+        **Never attach your master.db.** Remove anything private from the output below.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you ran, what you expected, what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `rbsync doctor`
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Full output of the command that failed
+      render: text
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS, Windows 11, Windows 10, Other]
+    validations:
+      required: true
