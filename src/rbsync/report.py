@@ -42,6 +42,12 @@ def render(plan: Plan, reorder: bool = False, verbose: bool = True) -> List[str]
         out.append("")
         out.append(f"FILE NOT FOUND ON DISK ({len(plan.missing_files)}) - skipped:")
         out += [f"      ! {p}" for p in plan.missing_files]
+    if plan.offline:
+        out.append("")
+        out.append(f"WARNING: {len(plan.offline)} track(s) are in your collection but their file is "
+                   "missing on disk (moved, renamed or on an unplugged drive).")
+        out.append("  They are kept in the playlist, but rekordbox cannot play or export them:")
+        out += [f"      ! {t.path}" for t in plan.offline]
     if plan.duplicate_lines:
         out.append("")
         out.append(f"Duplicate lines in the playlist file ignored: {len(plan.duplicate_lines)}")
@@ -51,4 +57,8 @@ def render(plan: Plan, reorder: bool = False, verbose: bool = True) -> List[str]
                    "once (same file, different path spelling). Using the copy with the most cues:")
         out += [f"      * {used.path}  (ID {used.id}, {used.cues} cues)"
                 for used, _ in plan.collection_duplicates]
+    if plan.skipped:
+        out.append("")
+        out.append(f"SUMMARY: {plan.skipped} line(s) of the playlist file were skipped (see above). "
+                   "The rest will be applied; use --strict to refuse instead.")
     return out

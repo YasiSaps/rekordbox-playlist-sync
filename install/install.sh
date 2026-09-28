@@ -4,7 +4,14 @@
 # Installs into ~/.rbsync, links ~/.local/bin/rbsync and adds the drag-and-drop app.
 set -euo pipefail
 
-REF="${RBSYNC_REF:-main}"
+# Default: the latest published release (fall back to main if GitHub cannot be reached).
+if [ -n "${RBSYNC_REF:-}" ]; then
+  REF="$RBSYNC_REF"
+else
+  REF="$(curl -fsSL --max-time 10 https://api.github.com/repos/YasiSaps/rekordbox-playlist-sync/releases/latest 2>/dev/null \
+    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1 || true)"
+  REF="${REF:-main}"
+fi
 SRC="https://github.com/YasiSaps/rekordbox-playlist-sync/archive/${REF}.zip"
 DEST="$HOME/.rbsync"
 BIN="$HOME/.local/bin"

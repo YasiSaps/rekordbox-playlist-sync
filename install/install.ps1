@@ -3,7 +3,15 @@
 # Installs into %LOCALAPPDATA%\rbsync, adds rbsync to your user PATH and a right-click "Send to" entry.
 $ErrorActionPreference = 'Stop'
 
-$Ref  = if ($env:RBSYNC_REF) { $env:RBSYNC_REF } else { 'main' }
+# Default: the latest published release (fall back to main if GitHub cannot be reached).
+$Ref = $env:RBSYNC_REF
+if (-not $Ref) {
+    try {
+        $Ref = (Invoke-RestMethod -TimeoutSec 10 -UseBasicParsing `
+            'https://api.github.com/repos/YasiSaps/rekordbox-playlist-sync/releases/latest').tag_name
+    } catch { $Ref = $null }
+    if (-not $Ref) { $Ref = 'main' }
+}
 $Src  = "https://github.com/YasiSaps/rekordbox-playlist-sync/archive/$Ref.zip"
 $Dest = Join-Path $env:LOCALAPPDATA 'rbsync'
 $Bin  = Join-Path $Dest 'bin'

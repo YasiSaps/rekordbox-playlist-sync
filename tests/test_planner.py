@@ -83,3 +83,16 @@ def test_to_dict_is_json_serialisable():
     import json
 
     json.dumps(plan(["/Music/t1.mp3", "/Music/t9.mp3"], [1, 2]).to_dict())
+
+
+def test_offline_tracks_are_kept_but_reported():
+    on_disk = {"/Music/t1.mp3"}
+    p = plan(["/Music/t1.mp3", "/Music/t2.mp3"], [1], exists=lambda x: x in on_disk)
+    assert ids(p.add) == ["2"] and ids(p.offline) == ["2"]
+    assert p.skipped == 0
+
+
+def test_skipped_counts_unusable_lines():
+    p = plan(["/Music/t1.mp3", "/Music/new.mp3", "/Gone/x.mp3"], [1],
+             exists=lambda x: x == "/Music/new.mp3")
+    assert p.skipped == 2 and p.not_in_collection == ["/Music/new.mp3"]

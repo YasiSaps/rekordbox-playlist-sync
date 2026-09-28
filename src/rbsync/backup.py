@@ -67,6 +67,18 @@ def list_backups() -> List[Tuple[str, dict]]:
     return sorted(out, key=lambda x: x[0], reverse=True)
 
 
+def prune(keep: int) -> List[str]:
+    """Delete all but the newest ``keep`` backups (0 keeps everything). Only folders with
+    an rbsync manifest are ever touched. Returns the removed backup ids."""
+    if keep <= 0:
+        return []
+    removed = []
+    for bid, _ in list_backups()[keep:]:
+        shutil.rmtree(os.path.join(config.backups_dir(), bid), ignore_errors=True)
+        removed.append(bid)
+    return removed
+
+
 def resolve(backup_id: str) -> Tuple[str, dict]:
     backups = list_backups()
     if not backups:

@@ -21,23 +21,47 @@ def _win_sendto_path() -> str:
 
 
 def _applescript(python: str) -> str:
+    # Several dropped files run one after another in a single Terminal window (never in
+    # parallel), with one "press Enter" at the end.
     py = python.replace("\\", "\\\\").replace('"', '\\"')
     return f'''
 on open theFiles
-    repeat with f in theFiles
-        set p to POSIX path of f
-        set cmd to (quoted form of "{py}") & " -m rbsync sync --pause " & (quoted form of p)
-        tell application "Terminal"
-            activate
-            do script cmd
-        end tell
+    set base to (quoted form of "{py}") & " -m rbsync sync "
+    set cmd to ""
+    set n to count of theFiles
+    repeat with i from 1 to n
+        set p to POSIX path of (item i of theFiles)
+        set flag to ""
+        if i = n then set flag to "--pause "
+        if cmd is not "" then set cmd to cmd & " ; "
+        set cmd to cmd & base & flag & (quoted form of p)
     end repeat
+    tell application "Terminal"
+        activate
+        do script cmd
+    end tell
 end open
 
 on run
-    display dialog "Drop an .m3u or .m3u8 playlist file onto this app to update the rekordbox playlist with the same name. You will see every change and confirm before anything is written." buttons {{"OK"}} default button 1 with title "rbsync"
+    display dialog "Drop one or more .m3u / .m3u8 playlist files onto this app to update the rekordbox playlists with the same names. You will see every change and confirm before anything is written." buttons {{"OK"}} default button 1 with title "rbsync"
 end run
 '''
+
+
+def _sendto_script(python: str) -> str:
+    # Handles every selected file, one after another.
+    return (
+        "@echo off\r\n"
+        "chcp 65001 >nul\r\n"
+        ":next\r\n"
+        'if "%~1"=="" goto done\r\n'
+        f'"{python}" -m rbsync sync "%~1"\r\n'
+        "shift\r\n"
+        "goto next\r\n"
+        ":done\r\n"
+        "echo.\r\n"
+        "pause\r\n"
+    )
 
 
 def install() -> str:
@@ -54,11 +78,10 @@ def install() -> str:
     if os.name == "nt":
         target = _win_sendto_path()
         os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, "w", encoding="utf-8") as f:
-            f.write("@echo off\r\nchcp 65001 >nul\r\n")
-            f.write(f'"{python}" -m rbsync sync --pause "%~1"\r\n')
+        with open(target, "w", encoding="utf-8", newline="") as f:
+            f.write(_sendto_script(python))
         return (f"Installed {target}\n"
-                'Right-click an .m3u/.m3u8 file > Send to > "rbsync - Update rekordbox playlist". '
+                'Select one or more .m3u/.m3u8 files, right-click > Send to > "rbsync - Update rekordbox playlist". '
                 "(On Windows 11 choose 'Show more options' first.)")
     raise RuntimeError("Desktop integration is available on macOS and Windows only.")
 

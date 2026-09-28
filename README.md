@@ -99,7 +99,7 @@ Run `rbsync integrate --remove`, then delete `~/.rbsync` and `~/.local/bin/rbsyn
 
 ## Quick start
 
-1. **Name the file after the playlist.** `Peak Time.m3u8` updates the rekordbox playlist called **Peak Time** (or use `--playlist "Peak Time"`).
+1. **Name the file after the playlist.** `Peak Time.m3u8` updates the rekordbox playlist called **Peak Time**. You can also use `--playlist "Peak Time"`, a `#PLAYLIST:Peak Time` line inside the file, or a folder path such as `--playlist "Gigs / Peak Time"`. Letter case and accents written differently still match, and a typo gets a *Did you mean…?*
 2. **Preview** — safe while rekordbox is open:
    ```bash
    rbsync plan "Peak Time.m3u8"
@@ -119,7 +119,7 @@ Run `rbsync integrate --remove`, then delete `~/.rbsync` and `~/.local/bin/rbsyn
    ```
 4. **Open rekordbox and sync your USB** as usual. Only the 10 new tracks are copied.
 
-Prefer not to type commands? **macOS:** drop the `.m3u8` on **rbsync Playlist Updater** (or right-click → *Open With*). **Windows:** right-click the file → **Send to → rbsync - Update rekordbox playlist**. Both show the changes, ask for confirmation, and wait for you to quit rekordbox.
+Prefer not to type commands? **macOS:** drop one or more `.m3u8` files on **rbsync Playlist Updater** (or right-click → *Open With*). **Windows:** select the files, right-click → **Send to → rbsync - Update rekordbox playlist**. Both show the changes, ask for confirmation, and wait for you to quit rekordbox. Several files are handled one after another.
 
 > **New tracks:** rbsync only adds tracks that are already in your rekordbox collection, so they are analysed properly. Files that aren't are listed as *NOT IN YOUR REKORDBOX COLLECTION* — drag them into rekordbox once, then run rbsync again. Creating a brand-new playlist of brand-new tracks? rekordbox's own **File → Import → Import Playlist** is the right tool for that first import.
 
@@ -131,9 +131,9 @@ Prefer not to type commands? **macOS:** drop the `.m3u8` on **rbsync Playlist Up
 | `rbsync apply FILE` | Back up, then write the changes. rekordbox must be closed. |
 | `rbsync sync FILE` | Interactive: preview → confirm → wait for rekordbox to close → apply. |
 | `rbsync playlists` | List all playlists, folders and intelligent playlists with their IDs and track counts. |
-| `rbsync backups` | List the backups rbsync has made. |
+| `rbsync backups [--prune N]` | List the backups rbsync has made, or delete all but the newest N. |
 | `rbsync restore [ID\|latest]` | Undo: put a backup back (the current state is backed up first). |
-| `rbsync doctor` | Check Python, pyrekordbox, library location, rekordbox version and permissions. |
+| `rbsync doctor` | Check Python, pyrekordbox, library location, rekordbox version, permissions and whether an rbsync update is available (`--offline` skips that). |
 | `rbsync selftest` | End-to-end test on a **temporary copy** of your library. |
 | `rbsync integrate [--remove]` | Add/remove the drag-and-drop app (macOS) or Send-to entry (Windows). |
 
@@ -141,11 +141,12 @@ Options for `plan`, `apply` and `sync`:
 
 | Option | Meaning |
 |---|---|
-| `--playlist NAME` | Playlist to update (default: file name without extension). |
+| `--playlist NAME` | Playlist to update, or a path like `"Gigs / Peak Time"` (default: the file's `#PLAYLIST:` line, then the file name). |
 | `--playlist-id ID` | Pick one when several playlists share a name (see `rbsync playlists`). |
-| `--create` | Create the playlist if it doesn't exist. `--folder NAME` puts it in a folder. |
+| `--create` | Create the playlist if it doesn't exist. `--folder NAME` (or `"Gigs / 2026"`) puts it in a folder, creating missing folders. |
 | `--reorder` | Also reorder the playlist to match the file. |
 | `--case-sensitive` | Treat `Track.mp3` and `track.mp3` as different files (case-sensitive volumes only). |
+| `--strict` | Refuse to write if any line of the file was skipped (not in the collection / file not found). |
 | `--allow-untested` | Write on a rekordbox version that hasn't been verified yet. |
 | `--db PATH` | Use a specific `master.db` instead of auto-detection. |
 
@@ -156,12 +157,14 @@ Exit codes: `0` success · `1` error · `2` blocked (rekordbox running, ambiguou
 rbsync edits rekordbox's library database, so it is deliberately conservative:
 
 - **Dry run by default.** `plan` never writes. `apply` shows the same report before writing.
-- **Automatic backup before every write** of `master.db` (+ `-wal`/`-shm`) and `masterPlaylists6.xml` to `Documents/rbsync/backups`. Undo with `rbsync restore latest`.
-- **Refuses to write while rekordbox is running**, checked by rbsync *and* by pyrekordbox.
+- **Automatic backup before every write** of `master.db` (+ `-wal`/`-shm`) and `masterPlaylists6.xml` to `Documents/rbsync/backups`. Undo with `rbsync restore latest`. The newest 30 are kept (set `RBSYNC_KEEP_BACKUPS`, `0` keeps all).
+- **Refuses to write while rekordbox is running**, checked by rbsync *and* by pyrekordbox. A lock file stops two rbsync runs from writing at the same time.
+- **Ignores deleted items.** rekordbox keeps deleted tracks, playlists and playlist entries in its database (marked as deleted). rbsync never matches, updates or counts them, and keeps track numbers gap-free the way rekordbox does.
 - **Only playlist membership changes.** rbsync never adds or deletes tracks in your collection and **never creates, moves, renames or deletes music files**.
 - **Verifies after writing** that the playlist contains exactly what the file asked for.
 - **Version gate.** Writing is only enabled on rekordbox versions verified end-to-end (including a USB sync). Others need `--allow-untested`.
-- **Every run is logged** to `Documents/rbsync/rbsync.log`.
+- **Every run is logged** to `Documents/rbsync/rbsync.log` (rotated at 2 MB).
+- **Warns about offline files**: tracks in your collection whose file is missing (moved, or on an unplugged drive) are flagged before you sync.
 - rekordbox also keeps its own daily `master.backup.*.db` files.
 
 Set `RBSYNC_HOME` to keep backups and the log somewhere else.
@@ -192,7 +195,13 @@ It is unofficial and not affiliated with AlphaTheta / Pioneer DJ. It uses [pyrek
 Not on purpose: tracks should be analysed by rekordbox. rbsync lists them so you can drag them in once.
 
 **Does it work with intelligent (smart) playlists or folders?**
-It updates regular playlists. It can create a playlist inside a folder with `--create --folder NAME`.
+It updates regular playlists; rekordbox fills intelligent playlists itself, so rbsync tells you when a name belongs to one. It can create a playlist inside a folder with `--create --folder NAME`.
+
+**I use Cloud Library Sync. Is that OK?**
+rbsync writes changes the same way rekordbox does (update sequence numbers included), so they should sync like edits made in rekordbox. This has not been verified yet: try it on a test playlist first and [report](https://github.com/YasiSaps/rekordbox-playlist-sync/issues/new?template=compatibility.yml) what happens.
+
+**How do I update rbsync?**
+Run the install command again. `rbsync doctor` tells you when a new version is out.
 
 **Where do the M3U files come from?**
 Anywhere: rekordbox/Serato/Traktor/VirtualDJ/iTunes exports, VLC, foobar2000, scripts, playlist generators or AI assistants. Absolute, relative and `file://` paths all work.
@@ -205,7 +214,9 @@ rbsync targets rekordbox only.
 | Message | Fix |
 |---|---|
 | `BLOCKED: rekordbox is running` | Quit rekordbox completely (Cmd+Q / close the window). Check the menu bar / system tray. |
-| `there is no playlist called "…"` | The name comes from the file name. Use `--playlist NAME`, `rbsync playlists`, or `--create`. |
+| `there is no playlist called "…"` | The name comes from `--playlist`, the file's `#PLAYLIST:` line, or the file name. Check the *Did you mean* hint, run `rbsync playlists`, or use `--create`. |
+| `is an intelligent playlist` | rekordbox fills intelligent playlists automatically. Update a regular playlist instead. |
+| `another rbsync … is updating rekordbox` | Wait for the other run to finish. A lock left by a crash is cleared automatically. |
 | `N playlists are called "…"` | Use `--playlist-id` with an ID from the list shown. |
 | `NOT IN YOUR REKORDBOX COLLECTION` | Drag those files into rekordbox once so they are analysed, then run again. |
 | `FILE NOT FOUND ON DISK` | The M3U points at a file that doesn't exist (moved, renamed, drive not mounted). |

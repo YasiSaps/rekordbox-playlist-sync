@@ -58,3 +58,20 @@ def test_backup_requires_master_db(tmp_path, monkeypatch):
 def test_backups_in_same_millisecond_do_not_collide(env):
     made = {backup.create(str(env), f"burst {i}") for i in range(20)}
     assert len(made) == 20 and len(backup.list_backups()) == 20
+
+
+def test_keep_backups_setting(monkeypatch):
+    monkeypatch.delenv("RBSYNC_KEEP_BACKUPS", raising=False)
+    assert config.keep_backups() == 30
+    monkeypatch.setenv("RBSYNC_KEEP_BACKUPS", "0")
+    assert config.keep_backups() == 0
+    monkeypatch.setenv("RBSYNC_KEEP_BACKUPS", "lots")
+    assert config.keep_backups() == 30
+
+
+def test_prune_keeps_newest(env):
+    made = [backup.create(str(env), f"b{i}") for i in range(5)]
+    removed = backup.prune(2)
+    assert len(removed) == 3
+    assert [b for b, _ in backup.list_backups()] == [os.path.basename(m) for m in made[-2:]][::-1]
+    assert backup.prune(0) == []

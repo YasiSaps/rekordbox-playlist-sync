@@ -24,6 +24,18 @@ def home() -> str:
     return os.path.join(os.path.expanduser("~"), "Documents", "rbsync")
 
 
+DEFAULT_KEEP_BACKUPS = 30
+LOG_MAX_BYTES = 2 * 1024 * 1024
+
+
+def keep_backups() -> int:
+    """How many backups to keep (RBSYNC_KEEP_BACKUPS, default 30; 0 keeps all)."""
+    try:
+        return max(0, int(os.environ.get("RBSYNC_KEEP_BACKUPS", DEFAULT_KEEP_BACKUPS)))
+    except ValueError:
+        return DEFAULT_KEEP_BACKUPS
+
+
 def backups_dir() -> str:
     return os.path.join(home(), "backups")
 

@@ -27,6 +27,15 @@ def _pick_tracks(lib, n):
     return picked
 
 
+def _state(lib, name):
+    """(playlist id, live content ids in order, track numbers) of the test playlist."""
+    found = lib.resolve(name).matches
+    if len(found) != 1:
+        return None, [], []
+    songs = lib._songs(found[0])
+    return str(found[0].ID), [str(s.ContentID) for s in songs], [s.TrackNo for s in songs]
+
+
 def _variant(i, path):
     if i == 0:
         return "file://" + quote(path if path.startswith("/") else "/" + path)
@@ -102,20 +111,20 @@ def run(db_path=None) -> int:
         results.append(step("create playlist from 5 tracks (URL / NFD / case path variants)",
                             ["apply", v1, "--create"])[0])
         with Library(db) as lib:
-            pl = lib.find_playlists(name=name)
-            pid = str(pl[0].ID) if len(pl) == 1 else None
-            results.append(pid is not None and len(pl[0].Songs) == 5)
+            pid, ids, _ = _state(lib, name)
+            results.append(pid is not None and len(ids) == 5)
             say(f"  [{'PASS' if results[-1] else 'FAIL'}] playlist exists with 5 tracks")
 
         v2 = write("v2.m3u8", tracks[:3] + tracks[5:8])
         ok, text = step("update: keep 3, remove 2, add 3", ["apply", v2])
         results.append(ok and "+ add        3" in text and "- remove     2" in text)
         with Library(db) as lib:
-            pl = lib.find_playlists(name=name)
-            same = len(pl) == 1 and str(pl[0].ID) == pid
-            got = sorted(str(s.ContentID) for s in pl[0].Songs) if pl else []
-            results.append(same and got == sorted(t.id for t in tracks[:3] + tracks[5:8]))
+            pid2, ids, numbers = _state(lib, name)
+            results.append(pid2 == pid and sorted(ids) == sorted(t.id for t in tracks[:3] + tracks[5:8]))
             say(f"  [{'PASS' if results[-1] else 'FAIL'}] same playlist ID, exactly the new 6 tracks")
+            live = all(lib.track(i) is not None for i in ids)
+            results.append(live and numbers == list(range(1, len(ids) + 1)))
+            say(f"  [{'PASS' if results[-1] else 'FAIL'}] only live tracks, track numbers 1..{len(ids)}")
             now = {t.id: t.cues for t in lib.collection() if t.id in cues_before}
             results.append(now == cues_before and len(lib.collection()) == n_coll)
             say(f"  [{'PASS' if results[-1] else 'FAIL'}] cues unchanged, no tracks added to collection")
@@ -125,9 +134,7 @@ def run(db_path=None) -> int:
         v3 = write("v3.m3u8", list(reversed(tracks[:3] + tracks[5:8])))
         results.append(step("reorder to match the file", ["apply", v3, "--reorder"])[0])
         with Library(db) as lib:
-            order = lambda: [str(s.ContentID) for s in  # noqa: E731
-                             sorted(lib.find_playlists(name=name)[0].Songs, key=lambda s: s.TrackNo)]
-            reordered = order()
+            reordered = _state(lib, name)[1]
         results.append(reordered == [t.id for t in reversed(tracks[:3] + tracks[5:8])])
         say(f"  [{'PASS' if results[-1] else 'FAIL'}] order matches the file")
 
@@ -135,7 +142,7 @@ def run(db_path=None) -> int:
         with contextlib.redirect_stdout(buf):
             code = cli.main(["restore", "latest", "--yes", "--db", db])
         with Library(db) as lib:
-            restored = order()
+            restored = _state(lib, name)[1]
         results.append(code == 0 and restored != reordered and sorted(restored) == sorted(reordered))
         say(f"  [{'PASS' if results[-1] else 'FAIL'}] restore latest backup undoes the reorder")
         if not results[-1]:

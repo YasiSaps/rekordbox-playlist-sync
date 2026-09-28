@@ -49,12 +49,18 @@ class Plan:
     not_in_collection: List[str] = field(default_factory=list)
     missing_files: List[str] = field(default_factory=list)
     duplicate_lines: List[str] = field(default_factory=list)
+    offline: List[Track] = field(default_factory=list)  # in the collection, file missing on disk
     collection_duplicates: List[Tuple[Track, List[Track]]] = field(default_factory=list)
     reorder_needed: bool = False
 
     @property
     def changed(self) -> bool:
         return bool(self.create or self.add or self.remove)
+
+    @property
+    def skipped(self) -> int:
+        """Lines of the playlist file that could not be used."""
+        return len(self.not_in_collection) + len(self.missing_files)
 
     def to_dict(self) -> dict:
         t = lambda x: {"id": x.id, "path": x.path, "title": x.title, "artist": x.artist}  # noqa: E731
@@ -67,6 +73,7 @@ class Plan:
             "not_in_collection": self.not_in_collection,
             "missing_files": self.missing_files,
             "duplicate_lines": self.duplicate_lines,
+            "offline": [t(x) for x in self.offline],
             "collection_duplicates": [
                 {"used": t(u), "others": [t(o) for o in others]}
                 for u, others in self.collection_duplicates
@@ -118,6 +125,8 @@ def build_plan(
         seen.add(k)
         if k in index:
             plan.desired.append(index[k])
+            if not exists(index[k].path):
+                plan.offline.append(index[k])  # rekordbox will show it as missing
             if k in dupes:
                 plan.collection_duplicates.append(
                     (index[k], [t for t in dupes[k] if t is not index[k]])

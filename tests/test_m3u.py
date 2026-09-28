@@ -40,3 +40,23 @@ def test_unicode_and_spaces_roundtrip(tmp_path):
     p.write_text("#EXTM3U\n/Music/Let´s Go (Intro Edit).mp3\n/Music/비디오 Club Mix.mp3\n",
                  encoding="utf-8")
     assert m3u.read(str(p)) == ["/Music/Let´s Go (Intro Edit).mp3", "/Music/비디오 Club Mix.mp3"]
+
+
+def test_utf16_with_bom():
+    text = "#EXTM3U\r\nC:\\Música\\Día.mp3\r\n"
+    for enc in ("utf-16-le", "utf-16-be"):
+        bom = b"\xff\xfe" if enc.endswith("le") else b"\xfe\xff"
+        assert m3u.parse(m3u.decode(bom + text.encode(enc))) == ["C:/Música/Día.mp3"]
+
+
+def test_playlist_title_directive():
+    assert m3u.title("#EXTM3U\n#PLAYLIST: Friday Peak \n/a.mp3") == "Friday Peak"
+    assert m3u.title("\ufeff#PLAYLIST:Warm Up") == "Warm Up"
+    assert m3u.title("#EXTM3U\n/a.mp3") is None
+    assert m3u.title("#PLAYLIST:   ") is None
+
+
+def test_load(tmp_path):
+    f = tmp_path / "x.m3u8"
+    f.write_text("#PLAYLIST:Named\n/Music/a.mp3\n", encoding="utf-8")
+    assert m3u.load(str(f)) == ("Named", ["/Music/a.mp3"])

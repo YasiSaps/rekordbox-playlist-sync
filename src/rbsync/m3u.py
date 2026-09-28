@@ -4,7 +4,7 @@ VLC, foobar2000, Traktor exports, scripts and AI assistants)."""
 from __future__ import annotations
 
 import os
-from typing import List
+from typing import List, Optional, Tuple
 from urllib.parse import unquote, urlparse
 
 from .paths import is_absolute_any, normalize
@@ -13,7 +13,13 @@ ENCODINGS = ("utf-8-sig", "cp1252", "latin-1")
 
 
 def decode(raw: bytes) -> str:
-    """UTF-8 (with or without BOM) first, then the Windows code page M3U files often use."""
+    """UTF-16 when the file starts with its byte-order mark (some Windows tools write it),
+    else UTF-8 (with or without BOM), then the Windows code page M3U files often use."""
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        try:
+            return raw.decode("utf-16")
+        except UnicodeDecodeError:
+            pass
     for enc in ENCODINGS:
         try:
             return raw.decode(enc)
@@ -51,8 +57,23 @@ def parse(text: str, base_dir: str = "") -> List[str]:
     return tracks
 
 
-def read(path: str) -> List[str]:
-    """Read an M3U/M3U8 file from disk."""
+def title(text: str) -> Optional[str]:
+    """The playlist name from an ``#PLAYLIST:`` line (extended M3U), if there is one."""
+    for line in text.splitlines():
+        line = line.strip().lstrip("\ufeff")
+        if line.upper().startswith("#PLAYLIST:"):
+            name = line[len("#PLAYLIST:"):].strip()
+            return name or None
+    return None
+
+
+def load(path: str) -> Tuple[Optional[str], List[str]]:
+    """Read an M3U/M3U8 file from disk: (#PLAYLIST name or None, track paths)."""
     with open(path, "rb") as f:
-        raw = f.read()
-    return parse(decode(raw), os.path.dirname(os.path.abspath(path)))
+        text = decode(f.read())
+    return title(text), parse(text, os.path.dirname(os.path.abspath(path)))
+
+
+def read(path: str) -> List[str]:
+    """Read the track paths of an M3U/M3U8 file."""
+    return load(path)[1]

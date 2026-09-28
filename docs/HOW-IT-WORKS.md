@@ -49,18 +49,28 @@ matches other users' reports:
 
 ## What rbsync does instead
 
-1. Reads your M3U/M3U8 (UTF-8, UTF-8 BOM or Windows-1252; absolute, relative, `file://` and UNC
-   paths).
+1. Reads your M3U/M3U8 (UTF-8, UTF-8 BOM, UTF-16 or Windows-1252; absolute, relative, `file://`
+   and UNC paths).
 2. Normalizes every path (NFC Unicode, `/` separators, case-folded) and matches it against the
    collection, so spelling variants resolve to the track you already have. If a file is in the
    collection twice, the row with the most cues wins.
 3. Reads the **existing** playlist and computes the difference: rows to remove, tracks to add,
    unchanged rows. Nothing else.
 4. With `apply`: refuses if rekordbox is running, checks the rekordbox version, backs up the
-   database, then deletes and inserts only the changed `djmdSongPlaylist` rows (and optionally
-   renumbers them for `--reorder`) through [pyrekordbox](https://github.com/dylanljones/pyrekordbox),
-   which also maintains rekordbox's update sequence numbers and `masterPlaylists6.xml`.
+   database, then deletes and inserts only the changed `djmdSongPlaylist` rows through
+   [pyrekordbox](https://github.com/dylanljones/pyrekordbox), which also maintains rekordbox's
+   update sequence numbers and `masterPlaylists6.xml`. Track numbers are then rewritten to a
+   gap-free 1..n (in the file's order with `--reorder`).
 5. Re-reads the playlist and verifies it matches the file exactly.
+
+### Deleted rows
+
+rekordbox 6/7 does not always remove deleted data. Deleted tracks, playlists and playlist entries
+often stay in `master.db` with `rb_local_deleted = 1`, so Cloud Library Sync can pass the deletion
+on. rekordbox hides them; a naive database reader does not. A typical library can contain dozens
+of deleted tracks (sometimes sharing a path with a live re-import), several deleted playlists with
+the same names as live ones, and thousands of deleted playlist entries. rbsync filters these out
+everywhere: in path matching, playlist lookup, track counts, numbering and verification.
 
 Because the playlist ID and every track ID stay the same, Sync Manager sees a playlist with a few
 tracks added and removed, and only transfers those.

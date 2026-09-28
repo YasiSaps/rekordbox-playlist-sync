@@ -11,6 +11,7 @@ import sys
 from typing import List, Optional
 
 from . import __version__, backup, config, m3u
+from .lock import Lock, LockedError
 from .config import EXIT_BLOCKED, EXIT_ERROR, EXIT_OK, EXIT_UNTESTED
 from .planner import Plan, build_plan
 
@@ -50,7 +51,10 @@ class Output:
     def write_log(self):
         try:
             os.makedirs(config.home(), exist_ok=True)
-            with open(config.log_path(), "a", encoding="utf-8") as f:
+            log = config.log_path()
+            if os.path.exists(log) and os.path.getsize(log) > config.LOG_MAX_BYTES:
+                os.replace(log, log + ".1")  # keep one previous log
+            with open(log, "a", encoding="utf-8") as f:
                 f.write("\n".join(self.lines) + "\n\n")
         except OSError as e:
             print(f"(could not write log: {e})", file=sys.stderr)
@@ -64,8 +68,12 @@ def _open_library(args):
     return Library(args.db)
 
 
-def _playlist_name(args) -> str:
-    return args.playlist or os.path.splitext(os.path.basename(args.file))[0]
+def _name_candidates(args, file_title: Optional[str]) -> List[str]:
+    """Playlist names to try, in order: --playlist, the file's #PLAYLIST line, the file name."""
+    if args.playlist:
+        return [args.playlist]
+    stem = os.path.splitext(os.path.basename(args.file))[0]
+    return [n for n in dict.fromkeys([file_title, stem]) if n]
 
 
 def _make_plan(lib, args, out) -> Optional[Plan]:
@@ -74,33 +82,50 @@ def _make_plan(lib, args, out) -> Optional[Plan]:
         out(f"ERROR: playlist file not found: {args.file}")
         out.code = EXIT_ERROR
         return None
-    desired = m3u.read(args.file)
-    name = _playlist_name(args)
+    file_title, desired = m3u.load(args.file)
 
     if args.playlist_id:
-        found = lib.find_playlists(playlist_id=args.playlist_id)
-        found = [p for p in found if p.Attribute == 0]
-        if not found:
+        pl = lib.playlist_by_id(args.playlist_id)
+        if pl is None or pl.Attribute != 0:
             out(f"ERROR: no regular playlist with ID {args.playlist_id}. "
                 "Run 'rbsync playlists' to see IDs.")
             out.code = EXIT_ERROR
             return None
-        name = found[0].Name
+        name, found = pl.Name, [pl]
     else:
-        found = lib.find_playlists(name=name)
-    if len(found) > 1:
-        out(f'BLOCKED: {len(found)} playlists are called "{name}". Choose one with --playlist-id:')
-        for p in found:
-            out(f"    --playlist-id {p.ID}    {lib._path_of(p)}  ({len(p.Songs)} tracks)")
-        out.code = EXIT_BLOCKED
-        return None
-    if not found and not args.create:
-        out(f'BLOCKED: there is no playlist called "{name}" in rekordbox.')
-        out("  Check the spelling (the name comes from the file name, or use --playlist NAME),")
-        out("  or add --create to create it. Run 'rbsync playlists' to list your playlists.")
-        out.code = EXIT_BLOCKED
-        return None
+        names = _name_candidates(args, file_title)
+        name, res = names[0], None
+        for candidate in names:
+            res = lib.resolve(candidate)
+            if res.matches:
+                name = candidate
+                break
+        found = res.matches
+        if len(found) > 1:
+            out(f'BLOCKED: {len(found)} playlists are called "{name}". Choose one with --playlist-id:')
+            for p in found:
+                out(f"    --playlist-id {p.ID}    {lib._path_of(p)}  ({len(lib.entries(p))} tracks)")
+            out.code = EXIT_BLOCKED
+            return None
+        if found and res.how != "exact":
+            out(f'Note: using playlist "{lib._path_of(found[0])}" for "{name}" ({res.how} match).')
+        if not found and not args.create:
+            if res.smart:
+                out(f'BLOCKED: "{name}" is an intelligent playlist ({res.smart[0]}). rekordbox fills '
+                    "those automatically, so rbsync cannot edit them.")
+            else:
+                out(f'BLOCKED: there is no playlist called "{name}" in rekordbox.')
+                if res.suggestions:
+                    out("  Did you mean: " + ", ".join(f'"{x}"' for x in res.suggestions) + "?")
+                out("  The name comes from --playlist, the file's #PLAYLIST line, or the file name.")
+                out("  Add --create to create it. Run 'rbsync playlists' to list your playlists.")
+            out.code = EXIT_BLOCKED
+            return None
+        if found:
+            name = found[0].Name
 
+    if args.folder and found:
+        out(f'Note: --folder is ignored because "{name}" already exists (it is not moved).')
     pl = found[0] if found else None
     return build_plan(
         playlist_name=name,
@@ -203,6 +228,10 @@ def _apply(args, interactive: bool) -> int:
             for line in render(plan, args.reorder):
                 out(line)
             out("")
+            if args.strict and plan.skipped:
+                out(f"BLOCKED (--strict): {plan.skipped} line(s) of the playlist file were skipped. "
+                    "Nothing was changed.")
+                return EXIT_BLOCKED
             if not plan.changed and not (args.reorder and plan.reorder_needed):
                 out("Already up to date. Nothing to change.")
                 return EXIT_OK
@@ -215,7 +244,7 @@ def _apply(args, interactive: bool) -> int:
             if not _wait_for_rekordbox_to_close(out):
                 return EXIT_BLOCKED
 
-        with _open_library(args) as lib:
+        with Lock(), _open_library(args) as lib:
             fresh = _make_plan(lib, args, out)  # the library may have changed meanwhile
             if fresh is None:
                 return out.code
@@ -231,10 +260,11 @@ def _apply(args, interactive: bool) -> int:
             saved = backup.create(lib.db_dir, f'before updating "{plan.playlist_name}"', version)
             out(f"Backup: {saved}")
             playlist_id, moves = lib.apply(plan, args.reorder, args.folder, args.case_sensitive)
+        backup.prune(config.keep_backups())
         with _open_library(args) as lib:
             ok, detail = lib.verify(playlist_id, plan, args.reorder, args.case_sensitive)
         if args.reorder:
-            out(f"Reordered: {moves} move(s)")
+            out(f"Reordered: {moves} track(s) moved")
         if ok:
             out(f'DONE. "{plan.playlist_name}" (ID {playlist_id}) now has {detail}. '
                 f"+{len(plan.add)} / -{len(plan.remove)}.")
@@ -243,6 +273,9 @@ def _apply(args, interactive: bool) -> int:
         out(f"WARNING: verification failed: {detail}.")
         out("  Undo with:  rbsync restore latest   (with rekordbox closed)")
         return EXIT_ERROR
+    except LockedError as e:
+        out(f"BLOCKED: {e}")
+        return EXIT_BLOCKED
     except RekordboxError as e:
         out(f"ERROR: {e}")
         return EXIT_ERROR
@@ -285,6 +318,13 @@ def cmd_playlists(args) -> int:
 
 
 def cmd_backups(args) -> int:
+    if args.prune is not None:
+        if args.prune < 1:
+            print("--prune needs a number of backups to keep (1 or more).")
+            return EXIT_ERROR
+        removed = backup.prune(args.prune)
+        print(f"Removed {len(removed)} old backup(s); kept the newest {args.prune}.")
+        return EXIT_OK
     items = backup.list_backups()
     if not items:
         print(f"No backups yet. They will be stored in {config.backups_dir()}")
@@ -293,6 +333,9 @@ def cmd_backups(args) -> int:
     for bid, mf in items:
         print(f"  {bid}   rekordbox {mf.get('rekordbox_version') or '?':<9} {mf.get('reason', '')}")
     print("\nRestore one with:  rbsync restore <id>   or   rbsync restore latest")
+    keep = config.keep_backups()
+    print(f"The newest {keep} are kept automatically (RBSYNC_KEEP_BACKUPS)." if keep
+          else "All backups are kept (RBSYNC_KEEP_BACKUPS=0).")
     return EXIT_OK
 
 
@@ -319,11 +362,15 @@ def cmd_restore(args) -> int:
                 out("BLOCKED: quit rekordbox before restoring.")
                 return EXIT_BLOCKED
         version = config.rekordbox_version(db_dir)
-        bid, safety = backup.restore(bid, db_dir, version)
+        with Lock():
+            bid, safety = backup.restore(bid, db_dir, version)
         out(f"Restored {bid}. The state before the restore was saved as {os.path.basename(safety)}.")
         with Library(db_path) as lib:
             out(f"Library opens fine: {len(lib.collection())} tracks, {len(lib.playlists())} playlists/folders.")
         return EXIT_OK
+    except LockedError as e:
+        out(f"BLOCKED: {e}")
+        return EXIT_BLOCKED
     except (FileNotFoundError, RekordboxError) as e:
         out(f"ERROR: {e}")
         return EXIT_ERROR
@@ -331,9 +378,34 @@ def cmd_restore(args) -> int:
         out.write_log()
 
 
+def _latest_release(timeout: float = 3.0) -> Optional[str]:
+    """Latest published rbsync version on GitHub, or None when offline."""
+    import urllib.request
+
+    url = "https://api.github.com/repos/YasiSaps/rekordbox-playlist-sync/releases/latest"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
+                                                   "User-Agent": f"rbsync/{__version__}"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.load(r).get("tag_name", "").lstrip("v") or None
+    except Exception:
+        return None
+
+
+def _newer(latest: str, current: str) -> bool:
+    def parts(v):
+        return tuple(int(x) if x.isdigit() else 0 for x in v.split("."))
+
+    return parts(latest) > parts(current)
+
+
 def cmd_doctor(args) -> int:
     ok = True
-    print(f"rbsync        {__version__}")
+    latest = None if args.offline else _latest_release()
+    if latest and _newer(latest, __version__):
+        print(f"rbsync        {__version__}  (update available: {latest} - run the installer again)")
+    else:
+        print(f"rbsync        {__version__}")
     print(f"Python        {platform.python_version()} ({sys.executable})")
     print(f"System        {platform.system()} {platform.release()} {platform.machine()}")
     try:
@@ -368,6 +440,9 @@ def cmd_doctor(args) -> int:
         print(f"Backups       ERROR: {e}")
         ok = False
     print(f"Change log    {config.log_path()}")
+    if Lock().owner():
+        print(f"Lock          {os.path.join(config.home(), 'rbsync.lock')} "
+              "(another rbsync is running, or left over from a crash - removed automatically)")
     return EXIT_OK if ok else EXIT_ERROR
 
 
@@ -407,13 +482,16 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--create", action="store_true",
                         help="create the playlist if it does not exist yet")
         sp.add_argument("--folder", metavar="NAME",
-                        help="with --create: put the new playlist in this folder (created if needed)")
+                        help="with --create: put the new playlist in this folder (created if "
+                             "needed; 'Gigs / 2026' for a sub-folder path that already exists)")
         sp.add_argument("--reorder", action="store_true",
                         help="also reorder the playlist to match the file's order")
         sp.add_argument("--case-sensitive", action="store_true",
                         help="treat paths differing only in letter case as different files")
         sp.add_argument("--db", metavar="PATH", help="path to master.db (default: auto-detect)")
         if writes:
+            sp.add_argument("--strict", action="store_true",
+                            help="refuse to write if any line of the file could not be used")
             sp.add_argument("--allow-untested", action="store_true",
                             help="write even if this rekordbox version has not been verified")
 
@@ -436,6 +514,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_playlists)
 
     sp = sub.add_parser("backups", help="list the library backups rbsync has made")
+    sp.add_argument("--prune", type=int, metavar="N", help="delete all but the newest N backups")
     sp.set_defaults(func=cmd_backups)
 
     sp = sub.add_parser("restore", help="put a backup back (undo)")
@@ -444,8 +523,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--db", metavar="PATH")
     sp.set_defaults(func=cmd_restore)
 
-    sp = sub.add_parser("doctor", help="check your setup")
+    sp = sub.add_parser("doctor", help="check your setup (and whether an update is available)")
     sp.add_argument("--db", metavar="PATH")
+    sp.add_argument("--offline", action="store_true", help="skip the update check")
     sp.set_defaults(func=cmd_doctor)
 
     sp = sub.add_parser("selftest", help="end-to-end test on a temporary copy of your library")
