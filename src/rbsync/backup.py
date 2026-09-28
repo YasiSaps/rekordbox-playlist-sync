@@ -19,9 +19,15 @@ DB_FILES = ("master.db", "master.db-wal", "master.db-shm", "masterPlaylists6.xml
 
 def create(db_dir: str, reason: str, rekordbox_version: Optional[str] = None) -> str:
     """Copy the library database files into a new timestamped backup folder."""
-    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
-    dest = os.path.join(config.backups_dir(), stamp)
-    os.makedirs(dest, exist_ok=False)
+    base = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
+    stamp, n = base, 1
+    while True:  # two backups can land in the same millisecond (e.g. restore's safety copy)
+        dest = os.path.join(config.backups_dir(), stamp)
+        try:
+            os.makedirs(dest, exist_ok=False)
+            break
+        except FileExistsError:
+            stamp, n = f"{base}-{n}", n + 1
     copied = []
     for name in DB_FILES:
         src = os.path.join(db_dir, name)

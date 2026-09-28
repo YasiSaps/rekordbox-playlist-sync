@@ -53,3 +53,8 @@ def test_backup_requires_master_db(tmp_path, monkeypatch):
     monkeypatch.setenv("RBSYNC_HOME", str(tmp_path / "home"))
     with pytest.raises(FileNotFoundError):
         backup.create(str(tmp_path), "x")
+
+
+def test_backups_in_same_millisecond_do_not_collide(env):
+    made = {backup.create(str(env), f"burst {i}") for i in range(20)}
+    assert len(made) == 20 and len(backup.list_backups()) == 20
